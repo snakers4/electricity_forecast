@@ -28,8 +28,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau,MultiStepLR
 
 # custom classes
 from SDataset import S2SDataset
-from ELstm import E2ELSTM,WMSELoss
-
+from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day
 
 
 import pandas as pd
@@ -169,22 +168,41 @@ def main():
     data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages = preprocess_data()
     
     # features we use
-    temp_features = ['Temperature']
-    hol_emb_features = ['Holiday']
-    time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
-    target = ['Value']
-    predictors = temp_features + hol_emb_features + time_emb_features
-    
-    model = E2ELSTM(in_sequence_len = args.inp_seq,
-                     out_sequence_len = args.out_seq,
-                     features_meta_total = args.features_meta,
-                     features_ar_total = args.features_ar,
-                     meta_hidden_layer_length = args.lstm_meta_hid_feat,
-                     ar_hidden_layer_length = args.lstm_ar_hid_feat,
-                     meta_hidden_layers = args.lstm_meta_hid_lyr,
-                     ar_hidden_layers = args.lstm_ar_hid_lyr,
-                     lstm_dropout = args.lstm_dropout,
-                     classifier_hidden_length = args.mlp_hid_lyr)
+    if args.series_type == '1_day':
+        temp_features = ['Temperature']
+        hol_emb_features = ['Holiday']
+        time_emb_features = ['month','day','dow']
+        target = ['Value']
+        predictors = temp_features + hol_emb_features + time_emb_features
+        
+        model = E2ELSTM_day(in_sequence_len = args.inp_seq,
+                         out_sequence_len = args.out_seq,
+                         features_meta_total = args.features_meta,
+                         features_ar_total = args.features_ar,
+                         meta_hidden_layer_length = args.lstm_meta_hid_feat,
+                         ar_hidden_layer_length = args.lstm_ar_hid_feat,
+                         meta_hidden_layers = args.lstm_meta_hid_lyr,
+                         ar_hidden_layers = args.lstm_ar_hid_lyr,
+                         lstm_dropout = args.lstm_dropout,
+                         classifier_hidden_length = args.mlp_hid_lyr)        
+        
+    else:
+        temp_features = ['Temperature']
+        hol_emb_features = ['Holiday']
+        time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
+        target = ['Value']
+        predictors = temp_features + hol_emb_features + time_emb_features
+
+        model = E2ELSTM(in_sequence_len = args.inp_seq,
+                         out_sequence_len = args.out_seq,
+                         features_meta_total = args.features_meta,
+                         features_ar_total = args.features_ar,
+                         meta_hidden_layer_length = args.lstm_meta_hid_feat,
+                         ar_hidden_layer_length = args.lstm_ar_hid_feat,
+                         meta_hidden_layers = args.lstm_meta_hid_lyr,
+                         ar_hidden_layers = args.lstm_ar_hid_lyr,
+                         lstm_dropout = args.lstm_dropout,
+                         classifier_hidden_length = args.mlp_hid_lyr)
 
     model.cuda()
 
@@ -216,7 +234,7 @@ def main():
         shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
-        drop_last=True)
+        drop_last=False)
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
@@ -224,7 +242,7 @@ def main():
         shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
-        drop_last=True)
+        drop_last=False)
 
     criterion = nn.MSELoss().cuda()
 

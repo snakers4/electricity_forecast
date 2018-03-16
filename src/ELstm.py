@@ -15,6 +15,117 @@ def create_emb(cat_size = 7,
             param.requires_grad = False
     return emb, emb_size, output_size
 
+class E2ELSTM_day(nn.Module):
+    def __init__(self,
+                 in_sequence_len = 30,
+                 out_sequence_len = 30,
+                 features_meta_total = 44,
+                 features_ar_total = 1,
+                 meta_hidden_layer_length = 30,
+                 ar_hidden_layer_length = 30,
+                 meta_hidden_layers = 2,
+                 ar_hidden_layers = 1,
+                 lstm_dropout = 0.5,
+                 classifier_hidden_length = 256):
+        
+        super(E2ELSTM_day, self).__init__()
+
+        self.meta_hidden_layer_length = meta_hidden_layer_length
+        self.ar_hidden_layer_length = ar_hidden_layer_length
+        self.meta_hidden_layers = meta_hidden_layers
+        self.ar_hidden_layers = ar_hidden_layers      
+        
+        # create an embedding for each categorical feature
+        self.hol_emb, emb_size, output_size = create_emb(cat_size = 72,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)
+        
+        self.month_emb, emb_size, output_size = create_emb(cat_size = 12,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)  
+        
+        self.day_emb, emb_size, output_size = create_emb(cat_size = 31,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)
+        
+        self.dow_emb, emb_size, output_size = create_emb(cat_size = 7,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)          
+   
+        self.lstm_meta = nn.LSTM(features_meta_total,
+                            meta_hidden_layer_length,
+                            meta_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+        
+        self.lstm_ar = nn.LSTM(features_ar_total,
+                            ar_hidden_layer_length,
+                            ar_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)  
+
+
+        self.classifier = nn.Sequential(
+            nn.Linear(meta_hidden_layer_length + ar_hidden_layer_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, out_sequence_len),
+        )
+        
+        """ 
+        self.classifier = nn.Sequential(
+            nn.Linear(meta_hidden_layer_length + ar_hidden_layer_length, classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Linear(classifier_hidden_length, classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Linear(classifier_hidden_length, out_sequence_len),
+            nn.ReLU(True)
+        ) 
+        """
+
+
+    
+    def forward(self,
+                x_temp,
+                x_meta,
+                x_ar):
+        
+        # embed and extract various features
+        x_hol = self.hol_emb(x_meta[:,:,0])
+        x_month = self.month_emb(x_meta[:,:,1])
+        x_day = self.day_emb(x_meta[:,:,2])
+        x_dow = self.dow_emb(x_meta[:,:,3])        
+
+        x_meta = torch.cat([x_temp,x_hol,x_month,x_day,x_dow],dim=2)
+        
+        # initial values for LSTMs
+        h0_meta = Variable(torch.zeros(self.meta_hidden_layers, x_meta.size(0), self.meta_hidden_layer_length).cuda()) 
+        c0_meta = Variable(torch.zeros(self.meta_hidden_layers, x_meta.size(0), self.meta_hidden_layer_length).cuda())
+        
+        h0_ar = Variable(torch.zeros(self.ar_hidden_layers, x_ar.size(0), self.ar_hidden_layer_length).cuda()) 
+        c0_ar = Variable(torch.zeros(self.ar_hidden_layers, x_ar.size(0), self.ar_hidden_layer_length).cuda())         
+        
+        # Forward propagate LSTMs
+        out_meta, _ = self.lstm_meta(x_meta, (h0_meta, c0_meta))  
+        out_meta = out_meta[:, -1, :]
+        
+        out_ar, _ = self.lstm_ar(x_ar, (h0_ar, c0_ar))  
+        out_ar = out_ar[:, -1, :]    
+        
+        out = torch.cat([out_meta,out_ar],dim=1)
+       
+        out = self.classifier(out)
+
+        return out
+
+
 class E2ELSTM(nn.Module):
     def __init__(self,
                  in_sequence_len = 192,
@@ -38,31 +149,31 @@ class E2ELSTM(nn.Module):
         # create an embedding for each categorical feature
         self.hol_emb, emb_size, output_size = create_emb(cat_size = 66,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)
+                                                       output_size = 100)
         
         self.year_emb, emb_size, output_size = create_emb(cat_size = 8,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len) 
+                                                       output_size = 100) 
         
         self.month_emb, emb_size, output_size = create_emb(cat_size = 12,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)  
+                                                       output_size = 100)  
         
         self.day_emb, emb_size, output_size = create_emb(cat_size = 31,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)  
+                                                       output_size = 100)  
         
         self.hour_emb, emb_size, output_size = create_emb(cat_size = 24,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)
+                                                       output_size = 100)
         
         self.min_emb, emb_size, output_size = create_emb(cat_size = 60,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)
+                                                       output_size = 100)
         
         self.dow_emb, emb_size, output_size = create_emb(cat_size = 7,
                                                        max_emb_size = 50,
-                                                       output_size = in_sequence_len+out_sequence_len)        
+                                                       output_size = 100)        
         
    
         self.lstm_meta = nn.LSTM(features_meta_total,
