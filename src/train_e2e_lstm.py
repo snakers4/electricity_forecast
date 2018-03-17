@@ -92,7 +92,7 @@ parser.add_argument('-lstm_meta_hl', '--lstm_meta_hid_lyr', default=2, type=int,
                     metavar='LMHL', help='total number of meta lstm layers')
 parser.add_argument('-lstm_ar_hl', '--lstm_ar_hid_lyr', default=2, type=int,
                     metavar='LAHL', help='total number of ar lstm layers')
-parser.add_argument('-lstm_dr', '--lstm_dropout', default=0, type=int,
+parser.add_argument('-lstm_dr', '--lstm_dropout', default=0, type=float,
                     metavar='LD', help='lstm dropout between layers')
 # mlp params
 parser.add_argument('-mlp_hl', '--mlp_hid_lyr', default=512, type=int,
