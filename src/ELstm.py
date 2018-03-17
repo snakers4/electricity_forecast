@@ -125,7 +125,6 @@ class E2ELSTM_day(nn.Module):
 
         return out
 
-
 class E2ELSTM(nn.Module):
     def __init__(self,
                  in_sequence_len = 192,
