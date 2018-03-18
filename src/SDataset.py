@@ -57,7 +57,6 @@ class S2SDataset(data.Dataset):
 
         self.__normalize__()
         
-        
     def __produce_idx_one__(self,
                             forecast_id):
 
@@ -126,6 +125,9 @@ class S2SDataset(data.Dataset):
         elif self.mode == 'test':
             # test set length is equal to the number of forecast ids
             return len(self.forecast_ids)
+        elif self.mode == 'evaluate_wrmse':
+            # test set length is equal to the number of forecast ids
+            return len(self.forecast_ids)        
 
     def __getitem__(self, idx):
         if self.split_mode in ['random']:
@@ -142,7 +144,11 @@ class S2SDataset(data.Dataset):
                     idx = np.random.randint(trainval_X_sequences_ar.shape[0], size=16)                
                 
                 return trainval_X_sequences_ar[idx],trainval_X_sequences_meta[idx],trainval_y_sequences[idx]
-            
+            elif self.mode == 'evaluate_wrmse':
+                trainval_X_sequences_ar,trainval_X_sequences_meta,trainval_y_sequences,_,_,_ = self.__produce_idx_one__(self.forecast_ids[idx])
+                idx = -1
+                # just use the last available window
+                return trainval_X_sequences_ar[idx],trainval_X_sequences_meta[idx],trainval_y_sequences[idx] 
             elif self.mode == 'val':
                 trainval_X_sequences_ar,trainval_X_sequences_meta,trainval_y_sequences,_,_,_ = self.__produce_idx_one__(self.val_f_ids[idx])
                 # sample a random index of data, e.g. 16 sequences
@@ -158,8 +164,6 @@ class S2SDataset(data.Dataset):
                 return trainval_X_sequences_ar[idx],trainval_X_sequences_meta[idx],trainval_y_sequences[idx]
             elif self.mode == 'test':
                 _,_,_,test_X_sequences_meta,test_X_sequences_ar,len_diff = self.__produce_idx_one__(self.forecast_ids[idx])
-                X_sequences_ar = np.asarray( [(self.df.loc[idx][self.target].values) for idx in test_X_sequences_ar ] )
-                X_sequences_meta = np.asarray( [(self.df.loc[idx][self.predictors].values) for idx in test_X_sequences_meta ] )
                 return test_X_sequences_meta,test_X_sequences_ar,len_diff
         else:
             raise ValueError('getitem method not implemented for this split mode {}'.format(self.split_mode))
