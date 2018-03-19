@@ -1110,4 +1110,4 @@ def interpolate(data_df):
 
     train_forecast_ids = normal_forecast_ids + linear_interpolation + use_last_window    
     
-    return data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages
+    return data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,use_last_window,submit_zeroes,submit_averages

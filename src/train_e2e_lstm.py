@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 from math import sqrt
 from sklearn import  metrics
- 
+import pickle 
+
 # custom utils and random forest scripts
 from Utils import ETL_emb, count_test_period,preprocess_seq2seq,interpolate
 
@@ -28,7 +29,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau,MultiStepLR
 
 # custom classes
 from SDataset import S2SDataset
-from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day
+from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day,E2EGRU,EncoderDecoderGRU
 
 
 import pandas as pd
@@ -164,8 +165,30 @@ def main():
     global logger
     
     # preprocess data / ETL / interpolation / data curation
+    # data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages = preprocess_data()
     
-    data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages = preprocess_data()
+    # suppress pandas warnings
+    # do not do this in production!
+    pd.set_option('mode.chained_assignment', None)    
+    
+    # read all pre-calculated objects
+    data_df = pd.read_feather('../data/forecast/data_df_feather')
+    with open('train_forecast_ids.pkl', 'rb') as input:
+        train_forecast_ids = pickle.load(input)
+    with open('normal_forecast_ids.pkl', 'rb') as input:
+        normal_forecast_ids = pickle.load(input)
+    with open('linear_interpolation.pkl', 'rb') as input:
+        linear_interpolation = pickle.load(input)
+    with open('use_last_window.pkl', 'rb') as input:
+        use_last_window = pickle.load(input)
+    with open('submit_zeroes.pkl', 'rb') as input:
+        submit_zeroes = pickle.load(input)
+    with open('submit_averages.pkl', 'rb') as input:
+        submit_averages = pickle.load(input)    
+
+    # override - exclude last window series
+    train_forecast_ids = normal_forecast_ids + linear_interpolation
+    # take last window from previous submit    
     
     # features we use
     if args.series_type == '1_day':
@@ -192,8 +215,9 @@ def main():
         time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
         target = ['Value']
         predictors = temp_features + hol_emb_features + time_emb_features
-
-        model = E2ELSTM(in_sequence_len = args.inp_seq,
+        
+        # E2EGRU or E2ELSTM
+        model = EncoderDecoderGRU(in_sequence_len = args.inp_seq,
                          out_sequence_len = args.out_seq,
                          features_meta_total = args.features_meta,
                          features_ar_total = args.features_ar,
@@ -202,10 +226,12 @@ def main():
                          meta_hidden_layers = args.lstm_meta_hid_lyr,
                          ar_hidden_layers = args.lstm_ar_hid_lyr,
                          lstm_dropout = args.lstm_dropout,
-                         classifier_hidden_length = args.mlp_hid_lyr)
+                         classifier_hidden_length = args.mlp_hid_lyr,
+                         use_output = 'last')
 
-    model.cuda()
-
+    # model.cuda()
+    model = torch.nn.DataParallel(model).cuda()
+        
     # select only series we marked as trainable
     # negation is for speed only
     trainable_df = data_df[(~data_df.ForecastId.isin(list(set(data_df.ForecastId.unique()) - set(train_forecast_ids))))]
