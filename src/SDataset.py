@@ -19,14 +19,18 @@ class S2SDataset(data.Dataset):
                  target = 'Value',
                  mode = 'train', # train, val or test
                  split_mode = 'random', # random or left or right
-                 predictors = []
+                 predictors = [],
+                 val_size = 0.25
                  ):
         
         
         print('Creating dataset object ...')
         self.mode = mode
         # select only one type of series
-        self.df = df[df.ForecastId_type == series_type]
+        if series_type == '15m_1d':
+            self.df = df[df.ForecastId_type.isin(['15_mins','1_hour'])]
+        else:
+            self.df = df[df.ForecastId_type == series_type]
         
         # factorize features even further
         self.df = process_categorical_features(self.df,['Holiday','year', 'month', 'day', 'hour', 'minute','dow'])
@@ -45,7 +49,7 @@ class S2SDataset(data.Dataset):
         
         # do simple train test split based on forecast_ids
         self.train_f_ids, self.val_f_ids = train_test_split(self.forecast_ids,
-                                                 test_size = 0.25,
+                                                 test_size = val_size,
                                                  random_state = 42,
                                                  )
         

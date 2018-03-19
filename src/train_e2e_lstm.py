@@ -101,6 +101,10 @@ parser.add_argument('-mlp_hl', '--mlp_hid_lyr', default=512, type=int,
 # series type '15_mins' or '1_hour' or '1_day'
 parser.add_argument('--series_type', '-st', default='15_mins', type=str,
                     metavar='ST', help='on which type of time series to train the model')
+parser.add_argument('--use_output', '-useout', default='last', type=str,
+                    metavar='ST', help='which value of the model to use')
+parser.add_argument('-val_size', '--val_size', default=0.25, type=float,
+                    metavar='VS', help='validation set size')
 
 best_val_loss = 100
 train_minib_counter = 0
@@ -227,7 +231,7 @@ def main():
                          ar_hidden_layers = args.lstm_ar_hid_lyr,
                          lstm_dropout = args.lstm_dropout,
                          classifier_hidden_length = args.mlp_hid_lyr,
-                         use_output = 'last')
+                         use_output = args.use_output)
 
     # model.cuda()
     model = torch.nn.DataParallel(model).cuda()
@@ -243,7 +247,8 @@ def main():
                          target = 'Value',
                          mode = 'train',
                          split_mode = 'random',
-                         predictors = predictors)
+                         predictors = predictors,
+                         val_size = args.val_size)
 
     val_dataset = S2SDataset(df = trainable_df,
                          series_type = args.series_type,
@@ -252,7 +257,8 @@ def main():
                          target = 'Value',
                          mode = 'val',
                          split_mode = 'random',
-                         predictors = predictors)  
+                         predictors = predictors,
+                         val_size = args.val_size)  
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
