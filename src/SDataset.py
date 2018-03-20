@@ -118,6 +118,11 @@ class S2SDataset(data.Dataset):
         
         self.df['Value'] = (self.df['Value'] - self.df['mean']) / self.df['std']
         
+        for col_norm in ['Value1','Value4','Value12','Value96']:
+            if col_norm in self.df.columns:
+                self.df[col_norm] = (self.df[col_norm] - self.df['mean']) / self.df['std']
+                print('Column {} normalized'.format(col_norm))
+
         # set test set values back to 0
         self.df.loc[self.df.is_train==0,'Value'] = 0
             

@@ -287,7 +287,7 @@ def main():
                                               patience = 4,
                                               verbose = True,
                                               threshold = 1e-3,
-                                              min_lr = 1e-7
+                                              min_lr = 1e-6
                                               )   
 
     for epoch in range(args.start_epoch, args.epochs):
