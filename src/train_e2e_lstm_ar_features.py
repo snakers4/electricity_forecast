@@ -152,8 +152,6 @@ def main():
         submit_averages = pickle.load(input)
         
     # drop values wo AR features
-    del data_df['Value168']
-
     data_df = data_df.dropna()
 
     # override - exclude last window series
@@ -181,7 +179,7 @@ def main():
         
     else:
         temp_features = ['Temperature']
-        ar_features = ['Value1','Value4','Value12','Value24','Value96']
+        ar_features = ['Value','Value1','Value4','Value12','Value24','Value96','Value168']
         hol_emb_features = ['Holiday']
         time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
         target = ['Value']
@@ -215,7 +213,8 @@ def main():
                          mode = 'train',
                          split_mode = 'random',
                          predictors = predictors,
-                         val_size = args.val_size)
+                         val_size = args.val_size,
+                         ar_features = ar_features)
 
     val_dataset = S2SDataset(df = trainable_df,
                          series_type = args.series_type,
@@ -225,7 +224,8 @@ def main():
                          mode = 'val',
                          split_mode = 'random',
                          predictors = predictors,
-                         val_size = args.val_size)  
+                         val_size = args.val_size,
+                         ar_features = ar_features)  
     
     print('Train dataset length is {}'.format(len(train_dataset)))
 
@@ -324,8 +324,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:6].float()
-        X_sequences_meta = X_sequences_meta[:,:,6:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:1].float()
+        X_sequences_meta = X_sequences_meta[:,:,1:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))
@@ -401,8 +401,8 @@ def validate(val_loader, model, criterion):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:6].float()
-        X_sequences_meta = X_sequences_meta[:,:,6:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:1].float()
+        X_sequences_meta = X_sequences_meta[:,:,1:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))

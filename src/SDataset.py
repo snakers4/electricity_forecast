@@ -20,6 +20,7 @@ class S2SDataset(data.Dataset):
                  mode = 'train', # train, val or test
                  split_mode = 'random', # random or left or right
                  predictors = [],
+                 ar_features = [],
                  val_size = 0.25
                  ):
         
@@ -43,6 +44,7 @@ class S2SDataset(data.Dataset):
         self.target = target
         self.mode = mode
         self.split_mode = split_mode
+        self.ar_features = ar_features
         
         # store the selected time series' site_ids and forecast_ids
         self.forecast_ids = list(self.df.ForecastId.unique())
@@ -74,6 +76,7 @@ class S2SDataset(data.Dataset):
 
         slice_df_predictors = slice_df[self.predictors].values
         slice_df_targets = slice_df[self.target].values
+        slice_df_ar_features = slice_df[self.ar_features].values
 
         # idx of the trainval subset
         trainval_idx = list(slice_df[(slice_df.is_train == 1)].index)
@@ -81,7 +84,7 @@ class S2SDataset(data.Dataset):
         test_idx = list(slice_df[(slice_df.is_train == 0)].index)
 
         # we always have enough data for several rolling windows for trainval
-        trainval_X_sequences_ar = np.asarray( [(slice_df_targets[trainval_idx[window:window+self.in_sequence_len]]) for window in range(0,trainval_window_count)] )
+        trainval_X_sequences_ar = np.asarray( [(slice_df_ar_features[trainval_idx[window:window+self.in_sequence_len]]) for window in range(0,trainval_window_count)] )
         trainval_X_sequences_meta = np.asarray( [(slice_df_predictors[trainval_idx[window : window+self.in_sequence_len+self.out_sequence_len]]) for window in range(0,trainval_window_count)] ) 
         trainval_y_sequences = np.asarray( [(slice_df_targets[trainval_idx[window+self.in_sequence_len : window+self.in_sequence_len+self.out_sequence_len]]) for window in range(0,trainval_window_count)] )
 
@@ -89,11 +92,11 @@ class S2SDataset(data.Dataset):
         # if the test set has standard length
         if len(test_idx) == self.out_sequence_len:
             test_X_sequences_meta = slice_df_predictors[trainval_idx[-self.in_sequence_len:] + test_idx]
-            test_X_sequences_ar = slice_df_targets[trainval_idx[-self.in_sequence_len:]]
+            test_X_sequences_ar = slice_df_ar_features[trainval_idx[-self.in_sequence_len:]]
         # otherwise add several points from the train dataset
         else:
             test_X_sequences_meta = slice_df_predictors[trainval_idx[- self.out_sequence_len - len_diff:] + test_idx]
-            test_X_sequences_ar = slice_df_targets[trainval_idx[- self.out_sequence_len - len_diff:]]         
+            test_X_sequences_ar = slice_df_ar_features[trainval_idx[- self.out_sequence_len - len_diff:]]         
 
         return trainval_X_sequences_ar,trainval_X_sequences_meta,trainval_y_sequences,test_X_sequences_meta,test_X_sequences_ar,len_diff
     
@@ -115,10 +118,9 @@ class S2SDataset(data.Dataset):
         # insert stds only for other series with non-zero std
         self.df.loc[~self.df['ForecastId'].isin(flat_forecast_ids),'std'] = self.df[~self.df['ForecastId'].isin(flat_forecast_ids)].ForecastId.apply(lambda x: self.std_dict[x])
 
+        # self.df['Value'] = (self.df['Value'] - self.df['mean']) / self.df['std']
         
-        self.df['Value'] = (self.df['Value'] - self.df['mean']) / self.df['std']
-        
-        for col_norm in ['Value1','Value4','Value12','Value96']:
+        for col_norm in self.ar_features:
             if col_norm in self.df.columns:
                 self.df[col_norm] = (self.df[col_norm] - self.df['mean']) / self.df['std']
                 print('Column {} normalized'.format(col_norm))
