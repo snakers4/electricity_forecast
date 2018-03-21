@@ -28,7 +28,7 @@ class S2SDataset(data.Dataset):
         print('Creating dataset object ...')
         self.mode = mode
         # select only one type of series
-        if series_type == '15m_1d':
+        if series_type == '15m_1h':
             self.df = df[df.ForecastId_type.isin(['15_mins','1_hour'])]
         else:
             self.df = df[df.ForecastId_type == series_type]
