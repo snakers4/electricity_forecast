@@ -362,8 +362,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-        X_sequences_meta = X_sequences_meta[:,:,5:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:7].float()
+        X_sequences_meta = X_sequences_meta[:,:,7:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))
@@ -439,8 +439,8 @@ def validate(val_loader, model, criterion):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-        X_sequences_meta = X_sequences_meta[:,:,5:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:7].float()
+        X_sequences_meta = X_sequences_meta[:,:,7:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))

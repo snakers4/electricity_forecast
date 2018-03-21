@@ -113,45 +113,6 @@ valid_minib_counter = 0
 args = parser.parse_args()
 print(args)
 
-LOGNUMBER = 'e2e_seq2seq'
-
-
-def preprocess_data():
-    print('Starting the ETL process')
-
-    start_time = time.time()
-    df_train,df_sub = ETL_emb()
-    test_lengths = count_test_period(df_sub)
-    elapsed_time = time.time() - start_time 
-
-    print('Time taken to complete the ETL process {}'.format(elapsed_time))
-
-    forecast_ids = list(test_lengths.keys())
-    site_ids = list(df_sub.SiteId.unique())
-
-    # suppress pandas warnings
-    # do not do this in production!
-    pd.set_option('mode.chained_assignment', None)
-
-    submission_df = pd.read_csv('../data/forecast/submission_format.csv')
-    submission_df = submission_df.set_index('obs_id')
-
-    data_df = preprocess_seq2seq(df_train,df_sub)
-    # reset index to make sure we do not have double indexes and for easier indexing
-    data_df = data_df.reset_index()
-    del data_df['index']
-
-    # leave only the first holiday
-    data_df = data_df[(data_df['obs_id'].shift(+1) != data_df['obs_id'])]
-    data_df = data_df.reset_index()
-    del data_df['index']
-    # fill days wo holidays with -1
-    data_df['Holiday'] = data_df['Holiday'].fillna(value=-1)
-
-    data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages = interpolate(data_df)
-    
-    return data_df,train_forecast_ids,normal_forecast_ids,linear_interpolation,last_window,submit_zeroes,submit_averages
-    
 # remove the log file if it exists if we run the script in the training mode
 if not (args.predict or args.predict_train):
     print('Folder {} delete triggered'.format(args.lognumber))
@@ -191,7 +152,8 @@ def main():
         submit_averages = pickle.load(input)
         
     # drop values wo AR features
-    del data_df['Value672']
+    del data_df['Value168']
+
     data_df = data_df.dropna()
 
     # override - exclude last window series
@@ -219,7 +181,7 @@ def main():
         
     else:
         temp_features = ['Temperature']
-        ar_features = ['Value1','Value4','Value12','Value96']
+        ar_features = ['Value1','Value4','Value12','Value24','Value96']
         hol_emb_features = ['Holiday']
         time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
         target = ['Value']
@@ -362,8 +324,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-        X_sequences_meta = X_sequences_meta[:,:,5:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:6].float()
+        X_sequences_meta = X_sequences_meta[:,:,6:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))
@@ -439,8 +401,8 @@ def validate(val_loader, model, criterion):
         X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
-        X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-        X_sequences_meta = X_sequences_meta[:,:,5:].long()
+        X_sequences_temp = X_sequences_meta[:,:,0:6].float()
+        X_sequences_meta = X_sequences_meta[:,:,6:].long()
 
         x_temp_var = torch.autograd.Variable(X_sequences_temp.cuda(async=True))
         x_meta_var = torch.autograd.Variable(X_sequences_meta.cuda(async=True))
