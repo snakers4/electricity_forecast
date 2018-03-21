@@ -183,7 +183,7 @@ def main():
         hol_emb_features = ['Holiday']
         time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
         target = ['Value']
-        predictors = temp_features + ar_features + hol_emb_features + time_emb_features
+        predictors = temp_features + hol_emb_features + time_emb_features
         
         # E2EGRU or E2ELSTM
         model = EncoderDecoderGRU(in_sequence_len = args.inp_seq,
@@ -315,13 +315,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     end = time.time()
     for i, (X_sequences_ar,X_sequences_meta,y_sequences) in enumerate(train_loader):
-        
         # measure data loading time
         data_time.update(time.time() - end)        
        
         # transform data from Batch x Window x Etc into Batch x Etc format
         X_sequences_meta = X_sequences_meta.view(-1,X_sequences_meta.size(2),X_sequences_meta.size(3))
-        X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
+        X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),X_sequences_ar.size(3)).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
         X_sequences_temp = X_sequences_meta[:,:,0:1].float()
@@ -398,7 +397,7 @@ def validate(val_loader, model, criterion):
         
         # transform data from Batch x Window x Etc into Batch x Etc format
         X_sequences_meta = X_sequences_meta.view(-1,X_sequences_meta.size(2),X_sequences_meta.size(3))
-        X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),1).float()
+        X_sequences_ar = X_sequences_ar.view(-1,X_sequences_ar.size(2),X_sequences_ar.size(3)).float()
         y_sequences = y_sequences.view(-1,y_sequences.size(2)).float()
         # modify here
         X_sequences_temp = X_sequences_meta[:,:,0:1].float()
