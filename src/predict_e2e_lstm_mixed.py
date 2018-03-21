@@ -38,7 +38,7 @@ from Utils import WRMSE
 
 import pickle
 
-LOGNUMBER = 'encoder_decoder_grus_ar_features2'
+LOGNUMBER = 'enc_dec_grus_ar_features_wo_leak'
 
 def preprocess_data():
     print('Starting the ETL process')
@@ -100,8 +100,8 @@ def main():
     # take last window from previous submit
     
     best_1d_model = 'weights/bl_1d_1e2_best.pth.tar'
-    best_1h_model = 'weights/15m1d_encoder_decoder_w192_hid192_3lyr_5ar_best.pth.tar'
-    best_15m_model = 'weights/15m1d_encoder_decoder_w192_hid192_3lyr_5ar_best.pth.tar'
+    best_1h_model = 'weights/15m1h_encdec_w192_hid512_2lyr_7ar_best.pth.tar'
+    best_15m_model = 'weights/15m1h_encdec_w192_hid512_2lyr_7ar_best.pth.tar'
     
     model_1d = E2ELSTM_day(in_sequence_len = 30,
                      out_sequence_len = 30,
@@ -116,25 +116,25 @@ def main():
     
     model_1h = EncoderDecoderGRU(in_sequence_len = 192,
                      out_sequence_len = 192,
-                     features_meta_total = 76,
-                     features_ar_total = 1,
-                     meta_hidden_layer_length = 192,
-                     ar_hidden_layer_length = 192,
-                     meta_hidden_layers = 3,
-                     ar_hidden_layers = 3,
+                     features_meta_total = 72,
+                     features_ar_total = 7,
+                     meta_hidden_layer_length = 512,
+                     ar_hidden_layer_length = 512,
+                     meta_hidden_layers = 2,
+                     ar_hidden_layers = 2,
                      lstm_dropout = 0,
-                     classifier_hidden_length = 512)
+                     classifier_hidden_length = 1024)
     
     model_15m = EncoderDecoderGRU(in_sequence_len = 192,
                      out_sequence_len = 192,
-                     features_meta_total = 76,
-                     features_ar_total = 1,
-                     meta_hidden_layer_length = 192,
-                     ar_hidden_layer_length = 192,
-                     meta_hidden_layers = 3,
-                     ar_hidden_layers = 3,
+                     features_meta_total = 72,
+                     features_ar_total = 7,
+                     meta_hidden_layer_length = 512,
+                     ar_hidden_layer_length = 512,
+                     meta_hidden_layers = 2,
+                     ar_hidden_layers = 2,
                      lstm_dropout = 0,
-                     classifier_hidden_length = 512)
+                     classifier_hidden_length = 1024)
 
     model_1h = torch.nn.DataParallel(model_1h)
     model_15m = torch.nn.DataParallel(model_15m)
@@ -172,6 +172,7 @@ def main():
     print('Predicting for 1 day series ...')
     
     temp_features = ['Temperature']
+    ar_features = ['Value']    
     hol_emb_features = ['Holiday']
     time_emb_features = ['month','day','dow']
     target = ['Value']
@@ -184,7 +185,8 @@ def main():
                          target = 'Value',
                          mode = 'test',
                          split_mode = 'random',
-                         predictors = predictors)
+                         predictors = predictors,
+                         ar_features = ar_features)
 
     predict_dataset_wrmse = S2SDataset(df = trainable_df,
                          series_type = '1_day',
@@ -193,7 +195,8 @@ def main():
                          target = 'Value',
                          mode = 'evaluate_wrmse',
                          split_mode = 'random',
-                         predictors = predictors)    
+                         predictors = predictors,
+                         ar_features = ar_features)  
     
     print('Dataset length is {}'.format(len(predict_dataset.forecast_ids)))
     
@@ -295,11 +298,11 @@ def main():
     print('Predicting for 1 hour series ...')   
     
     temp_features = ['Temperature']
-    ar_features = ['Value1','Value4','Value12','Value96']
+    ar_features = ['Value','Value1','Value4','Value12','Value24','Value96','Value168']
     hol_emb_features = ['Holiday']
     time_emb_features = ['year', 'month', 'day', 'hour', 'minute','dow']
     target = ['Value']
-    predictors = temp_features + ar_features + hol_emb_features + time_emb_features
+    predictors = temp_features + hol_emb_features + time_emb_features
 
     predict_dataset = S2SDataset(df = trainable_df,
                          series_type = '1_hour',
@@ -308,8 +311,10 @@ def main():
                          target = 'Value',
                          mode = 'test',
                          split_mode = 'random',
-                         predictors = predictors)
-
+                         predictors = predictors,
+                         ar_features = ar_features)
+    
+    """ 
     predict_dataset_wrmse = S2SDataset(df = trainable_df,
                          series_type = '1_hour',
                          in_sequence_len = 192,
@@ -317,8 +322,9 @@ def main():
                          target = 'Value',
                          mode = 'evaluate_wrmse',
                          split_mode = 'random',
-                         predictors = predictors)                      
-       
+                         predictors = predictors,
+                         ar_features = ar_features)                      
+    """
     print('Dataset length is {}'.format(len(predict_dataset.forecast_ids)))
 
     with tqdm.tqdm(total=len(predict_dataset.forecast_ids)) as pbar:
@@ -328,13 +334,13 @@ def main():
             test_X_sequences_meta,test_X_sequences_ar,len_diff = predict_dataset.__getitem__(i)
 
             # into PyTorch format
-            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,12)
-            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,1)    
+            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,8)
+            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,7)    
 
             # transform data from Batch x Window x Etc into Batch x Etc format
             test_X_sequences_ar = test_X_sequences_ar.float()
-            test_X_sequences_temp = test_X_sequences_meta[:,:,0:5].float()
-            test_X_sequences_meta = test_X_sequences_meta[:,:,5:].long()
+            test_X_sequences_temp = test_X_sequences_meta[:,:,0:1].float()
+            test_X_sequences_meta = test_X_sequences_meta[:,:,1:].long()
 
             x_temp_var = torch.autograd.Variable(test_X_sequences_temp).cuda(async=True)
             x_meta_var = torch.autograd.Variable(test_X_sequences_meta).cuda(async=True)
@@ -350,20 +356,21 @@ def main():
             submission_df.loc[submission_df.ForecastId == forecast_id, 'Value'] =  output 
             pbar.update(1)
 
+    """
     with tqdm.tqdm(total=len(predict_dataset.forecast_ids)) as pbar:
         for i,forecast_id in enumerate(predict_dataset_wrmse.forecast_ids):
             i = predict_dataset_wrmse.forecast_ids.index(forecast_id)
 
             X_sequences_ar,X_sequences_meta,y_sequences = predict_dataset_wrmse.__getitem__(i)        
-            X_sequences_meta = torch.from_numpy(X_sequences_meta).view(1,-1,12)
-            X_sequences_ar = torch.from_numpy(X_sequences_ar).view(1,-1,1)
+            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,8)
+            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,7)   
 
             y_true = y_sequences.reshape(-1) * predict_dataset_wrmse.std_dict[forecast_id] + predict_dataset_wrmse.mean_dict[forecast_id]
 
             # transform data from Batch x Window x Etc into Batch x Etc format
             X_sequences_ar = X_sequences_ar.float()
-            X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-            X_sequences_meta = X_sequences_meta[:,:,5:].long()
+            X_sequences_temp = X_sequences_meta[:,:,0:1].float()
+            X_sequences_meta = X_sequences_meta[:,:,1:].long()
 
             x_temp_var = torch.autograd.Variable(test_X_sequences_temp).cuda(async=True)
             x_meta_var = torch.autograd.Variable(test_X_sequences_meta).cuda(async=True)
@@ -379,7 +386,7 @@ def main():
             r2_score_val = metrics.r2_score(y_true, output)
             stat_df = stat_df.append(pd.DataFrame([dict(zip(stat_cols,[forecast_id,r2_score_val,wrmse_val]))]))
             pbar.update(1)
-                       
+    """                
     print('Predicting for 15 min series ...')                       
 
     predict_dataset = S2SDataset(df = trainable_df,
@@ -389,8 +396,10 @@ def main():
                          target = 'Value',
                          mode = 'test',
                          split_mode = 'random',
-                         predictors = predictors)
+                         predictors = predictors,
+                         ar_features = ar_features)
 
+    """
     predict_dataset_wrmse = S2SDataset(df = trainable_df,
                          series_type = '15_mins',
                          in_sequence_len = 192,
@@ -398,7 +407,9 @@ def main():
                          target = 'Value',
                          mode = 'evaluate_wrmse',
                          split_mode = 'random',
-                         predictors = predictors)                      
+                         predictors = predictors,
+                         ar_features = ar_features)     
+    """
                
     print('Dataset length is {}'.format(len(predict_dataset.forecast_ids)))
 
@@ -409,13 +420,13 @@ def main():
             test_X_sequences_meta,test_X_sequences_ar,len_diff = predict_dataset.__getitem__(i)
 
             # into PyTorch format
-            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,12)
-            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,1)    
+            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,8)
+            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,7)   
 
             # transform data from Batch x Window x Etc into Batch x Etc format
             test_X_sequences_ar = test_X_sequences_ar.float()
-            test_X_sequences_temp = test_X_sequences_meta[:,:,0:5].float()
-            test_X_sequences_meta = test_X_sequences_meta[:,:,5:].long()
+            test_X_sequences_temp = test_X_sequences_meta[:,:,0:1].float()
+            test_X_sequences_meta = test_X_sequences_meta[:,:,1:].long()
 
             x_temp_var = torch.autograd.Variable(test_X_sequences_temp).cuda(async=True)
             x_meta_var = torch.autograd.Variable(test_X_sequences_meta).cuda(async=True)
@@ -430,21 +441,21 @@ def main():
             output = output * predict_dataset.std_dict[forecast_id] + predict_dataset.mean_dict[forecast_id]
             submission_df.loc[submission_df.ForecastId == forecast_id, 'Value'] =  output 
             pbar.update(1)
-
+    """
     with tqdm.tqdm(total=len(predict_dataset.forecast_ids)) as pbar:
         for i,forecast_id in enumerate(predict_dataset_wrmse.forecast_ids):
             i = predict_dataset_wrmse.forecast_ids.index(forecast_id)
 
             X_sequences_ar,X_sequences_meta,y_sequences = predict_dataset_wrmse.__getitem__(i)        
-            X_sequences_meta = torch.from_numpy(X_sequences_meta).view(1,-1,12)
-            X_sequences_ar = torch.from_numpy(X_sequences_ar).view(1,-1,1)
+            test_X_sequences_meta = torch.from_numpy(test_X_sequences_meta).view(1,-1,8)
+            test_X_sequences_ar = torch.from_numpy(test_X_sequences_ar).view(1,-1,7)   
 
             y_true = y_sequences.reshape(-1) * predict_dataset_wrmse.std_dict[forecast_id] + predict_dataset_wrmse.mean_dict[forecast_id]
 
             # transform data from Batch x Window x Etc into Batch x Etc format
             X_sequences_ar = X_sequences_ar.float()
-            X_sequences_temp = X_sequences_meta[:,:,0:5].float()
-            X_sequences_meta = X_sequences_meta[:,:,5:].long()
+            X_sequences_temp = X_sequences_meta[:,:,0:1].float()
+            X_sequences_meta = X_sequences_meta[:,:,1:].long()
 
             x_temp_var = torch.autograd.Variable(test_X_sequences_temp).cuda(async=True)
             x_meta_var = torch.autograd.Variable(test_X_sequences_meta).cuda(async=True)
@@ -460,7 +471,7 @@ def main():
             r2_score_val = metrics.r2_score(y_true, output)
             stat_df = stat_df.append(pd.DataFrame([dict(zip(stat_cols,[forecast_id,r2_score_val,wrmse_val]))]))
             pbar.update(1)                   
-
+    """
     # submit zeroes and averages
     print('Submitting averages ... ')
     with tqdm.tqdm(total=len(submit_averages)) as pbar:
@@ -482,7 +493,7 @@ def main():
             pbar.update(1)
 
     
-    stat_df.to_csv('forest_stats_{}.csv'.format(LOGNUMBER))
+    # stat_df.to_csv('forest_stats_{}.csv'.format(LOGNUMBER))
     submission_df['Value'] = submission_df['Value'].fillna(value=0)
     submission_df.to_csv('../submissions/forecast_{}.csv'.format(LOGNUMBER))
                    
