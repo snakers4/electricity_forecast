@@ -752,6 +752,7 @@ class EncoderDecoderGRUSK(nn.Module):
                  lstm_dropout = 0.5,
                  classifier_hidden_length = 192 * 2,
                  use_output = 'last',
+                 use_bi = False
                  ):
         
         super(EncoderDecoderGRUSK, self).__init__()
@@ -761,6 +762,7 @@ class EncoderDecoderGRUSK(nn.Module):
         self.meta_hidden_layers = meta_hidden_layers
         self.ar_hidden_layers = ar_hidden_layers      
         self.use_output = use_output
+        self.use_bi = use_bi
                  
         # create an embedding for each categorical feature
         self.hol_emb, _, _ = create_emb(cat_size = 66,
@@ -802,45 +804,73 @@ class EncoderDecoderGRUSK(nn.Module):
                                            max_emb_size = 50,
                                            output_size = 300)        
    
+
         self.encoder_gru_meta = nn.GRU(features_meta_total,
-                            meta_hidden_layer_length,
+                            meta_hidden_layer_length ,
                             meta_hidden_layers,
                             batch_first=True,
                             dropout=lstm_dropout,
-                            bidirectional=False)
+                            bidirectional=use_bi)
 
         self.encoder_gru_ar = nn.GRU(features_ar_total,
                             ar_hidden_layer_length,
                             ar_hidden_layers,
                             batch_first=True,
                             dropout=lstm_dropout,
-                            bidirectional=False)
+                            bidirectional=use_bi)            
         
-        self.decoder_gru_meta = nn.GRU(meta_hidden_layer_length,
-                            meta_hidden_layer_length,
-                            meta_hidden_layers,
-                            batch_first=True,
-                            dropout=lstm_dropout,
-                            bidirectional=False)
+        if self.use_bi == False:
+            self.decoder_gru_meta = nn.GRU(meta_hidden_layer_length,
+                                meta_hidden_layer_length,
+                                meta_hidden_layers,
+                                batch_first=True,
+                                dropout=lstm_dropout,
+                                bidirectional=use_bi)
 
-        self.decoder_gru_ar = nn.GRU(ar_hidden_layer_length,
-                            ar_hidden_layer_length,
-                            ar_hidden_layers,
-                            batch_first=True,
-                            dropout=lstm_dropout,
-                            bidirectional=False)          
+            self.decoder_gru_ar = nn.GRU(ar_hidden_layer_length,
+                                ar_hidden_layer_length,
+                                ar_hidden_layers,
+                                batch_first=True,
+                                dropout=lstm_dropout,
+                                bidirectional=use_bi)
+        else:
+            self.decoder_gru_meta = nn.GRU(meta_hidden_layer_length * 2,
+                                meta_hidden_layer_length,
+                                meta_hidden_layers,
+                                batch_first=True,
+                                dropout=lstm_dropout,
+                                bidirectional=use_bi)
 
-        self.classifier = nn.Sequential(
-            nn.Linear(meta_hidden_layer_length + ar_hidden_layer_length, classifier_hidden_length),
-            nn.BatchNorm2d(classifier_hidden_length),
-            nn.ReLU(True),
-            nn.Dropout(),
-            nn.Linear(classifier_hidden_length, classifier_hidden_length),
-            nn.BatchNorm2d(classifier_hidden_length),
-            nn.ReLU(True),
-            nn.Dropout(),
-            nn.Linear(classifier_hidden_length, out_sequence_len),
-        )
+            self.decoder_gru_ar = nn.GRU(ar_hidden_layer_length * 2,
+                                ar_hidden_layer_length,
+                                ar_hidden_layers,
+                                batch_first=True,
+                                dropout=lstm_dropout,
+                                bidirectional=use_bi)            
+        if self.use_bi == False:
+            self.classifier = nn.Sequential(
+                nn.Linear(meta_hidden_layer_length + ar_hidden_layer_length, classifier_hidden_length),
+                nn.BatchNorm2d(classifier_hidden_length),
+                nn.ReLU(True),
+                nn.Dropout(),
+                nn.Linear(classifier_hidden_length, classifier_hidden_length),
+                nn.BatchNorm2d(classifier_hidden_length),
+                nn.ReLU(True),
+                nn.Dropout(),
+                nn.Linear(classifier_hidden_length, out_sequence_len),
+            )
+        else:
+            self.classifier = nn.Sequential(
+                nn.Linear((meta_hidden_layer_length + ar_hidden_layer_length)*2, classifier_hidden_length),
+                nn.BatchNorm2d(classifier_hidden_length),
+                nn.ReLU(True),
+                nn.Dropout(),
+                nn.Linear(classifier_hidden_length, classifier_hidden_length),
+                nn.BatchNorm2d(classifier_hidden_length),
+                nn.ReLU(True),
+                nn.Dropout(),
+                nn.Linear(classifier_hidden_length, out_sequence_len),
+            )            
 
     def forward(self,
                 x_temp,
@@ -867,8 +897,12 @@ class EncoderDecoderGRUSK(nn.Module):
         
         # Encoder part of the network # 
         # Initial values for GRUs
-        h0_meta = Variable(torch.zeros(self.meta_hidden_layers,  x_meta.size(0), self.meta_hidden_layer_length).cuda())
-        h0_ar = Variable(torch.zeros(self.ar_hidden_layers, x_ar.size(0), self.ar_hidden_layer_length).cuda()) 
+        if self.use_bi == False:
+            h0_meta = Variable(torch.zeros(self.meta_hidden_layers,  x_meta.size(0), self.meta_hidden_layer_length).cuda())
+            h0_ar = Variable(torch.zeros(self.ar_hidden_layers, x_ar.size(0), self.ar_hidden_layer_length).cuda()) 
+        else:
+            h0_meta = Variable(torch.zeros(self.meta_hidden_layers * 2,  x_meta.size(0), self.meta_hidden_layer_length).cuda())
+            h0_ar = Variable(torch.zeros(self.ar_hidden_layers * 2, x_ar.size(0), self.ar_hidden_layer_length).cuda())             
         # Forward propagate GRUs
         meta_encoded, meta_hidden = self.encoder_gru_meta(x_meta, h0_meta)
         ar_encoded, ar_hidden = self.encoder_gru_ar(x_ar, h0_ar)
@@ -889,3 +923,158 @@ class EncoderDecoderGRUSK(nn.Module):
         out = self.classifier(out)
 
         return out      
+    
+class DilatedConvModel(nn.Module):
+    def __init__(self,
+                 in_sequence_len = 700,
+                 out_sequence_len = 192,
+                 features_meta_total = 138,
+                 features_ar_total = 7,
+                 ):
+        
+        super(DilatedConvModel, self).__init__()
+
+        # create an embedding for each categorical feature
+        self.hol_emb, _, _ = create_emb(cat_size = 66,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.year_emb, _, _ = create_emb(cat_size = 8,
+                                       max_emb_size = 50,
+                                       output_size = 100) 
+        self.month_emb, _, _ = create_emb(cat_size = 12,
+                                       max_emb_size = 50,
+                                       output_size = 100)  
+        self.day_emb, _, _ = create_emb(cat_size = 31,
+                                       max_emb_size = 50,
+                                       output_size = 100)  
+        self.hour_emb, _, _ = create_emb(cat_size = 24,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.min_emb, _, _ = create_emb(cat_size = 60,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.dow_emb, _, _ = create_emb(cat_size = 7,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        
+        # additional binary and categorical embeddings
+        self.has_weather_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)        
+        self.is_hol_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.is_weekend_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.series_type_emb, _, _ = create_emb(cat_size = 3,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.site_id_emb, _, _ = create_emb(cat_size = 267,
+                                           max_emb_size = 50,
+                                           output_size = 300)        
+   
+
+        self.encoder_meta = self.classifier = nn.Sequential(
+            nn.Conv1d(features_meta_total, 64, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=2, dilation=2, groups=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.Conv1d(128, 256, kernel_size=3, stride=1, padding=4, dilation=4, groups=1, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.Conv1d(256, 512, kernel_size=3, stride=1, padding=8, dilation=8, groups=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.Conv1d(512, 1024, kernel_size=3, stride=2, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(True),             
+        )
+    
+        self.encoder_ar = self.classifier = nn.Sequential(
+            nn.Conv1d(features_ar_total, 64, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=2, dilation=2, groups=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.Conv1d(128, 256, kernel_size=3, stride=1, padding=4, dilation=4, groups=1, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.Conv1d(256, 512, kernel_size=3, stride=1, padding=8, dilation=8, groups=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.Conv1d(512, 1024, kernel_size=3, stride=1, padding=16, dilation=16, groups=1, bias=True),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(True),             
+        )
+ 
+        self.decoder = nn.Sequential(
+            nn.Conv1d(1024 * 2, 1024, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(True), 
+            nn.Conv1d(1024, 512, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True), 
+            nn.Conv1d(512, 256, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True), 
+            nn.Conv1d(256, 128, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.Conv1d(128, 64, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.Conv1d(64, 32, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+            nn.Conv1d(32, 16, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(16),
+            nn.ReLU(True),
+            nn.Conv1d(16, 8, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(8),
+            nn.ReLU(True),
+            nn.Conv1d(8, 4, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(4),
+            nn.ReLU(True), 
+            nn.Conv1d(4, 1, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True),
+            nn.BatchNorm2d(1),
+            nn.ReLU(True),               
+        )        
+
+    def forward(self,
+                x_temp,
+                x_meta,
+                x_ar):
+        
+        # embed and extract various features
+        x_hol = self.hol_emb(x_meta[:,:,0])
+        x_year = self.year_emb(x_meta[:,:,1])
+        x_month = self.month_emb(x_meta[:,:,2])
+        x_day = self.day_emb(x_meta[:,:,3])
+        x_hour = self.hour_emb(x_meta[:,:,4])
+        x_min = self.min_emb(x_meta[:,:,5])
+        x_dow = self.dow_emb(x_meta[:,:,6])
+
+        x_has_weather = self.has_weather_emb(x_meta[:,:,7])
+        x_is_hol = self.is_hol_emb(x_meta[:,:,8])
+        x_is_weekend = self.is_weekend_emb(x_meta[:,:,9])
+        x_series_type = self.series_type_emb(x_meta[:,:,10])        
+        x_site_id = self.site_id_emb(x_meta[:,:,11])           
+        
+        x_meta = torch.cat([x_temp,x_hol,x_year,x_month,x_day,x_hour,x_min,x_dow,\
+                            x_has_weather,x_is_hol,x_is_weekend,x_series_type,x_site_id],dim=2)\
+        
+        # transpose tensors to apply dilated convs 
+        x_meta = x_meta.view(-1,x_meta.size(2),x_meta.size(1))
+        x_ar = x_ar.view(-1,x_ar.size(2),x_ar.size(1))
+        
+        out = torch.cat((self.encoder_meta(x_meta),self.encoder_ar(x_ar)),dim=1)
+        print(out.size())
+
+        out = self.decoder(out)
+        print(out.size())
+
+        return out.view(-1,out.size(2))      

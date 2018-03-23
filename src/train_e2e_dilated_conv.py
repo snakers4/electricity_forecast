@@ -29,7 +29,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau,MultiStepLR
 
 # custom classes
 from SDataset import S2SDataset
-from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day,E2EGRU,EncoderDecoderGRU,EncoderDecoderGRUSK
+from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day,E2EGRU,DilatedConvModel
 
 
 import pandas as pd
@@ -84,25 +84,9 @@ parser.add_argument('-fmeta', '--features_meta', default=72, type=int,
                     metavar='FMETA', help='total number of meta-data features')
 parser.add_argument('-far', '--features_ar', default=1, type=int,
                     metavar='FMETA', help='total number of ar features')
-# lstm params
-parser.add_argument('-lstm_meta_hf', '--lstm_meta_hid_feat', default=192, type=int,
-                    metavar='LMHF', help='total number of hidden features for meta data lstm')
-parser.add_argument('-lstm_ar_hf', '--lstm_ar_hid_feat', default=192, type=int,
-                    metavar='LARHF', help='total number of hidden features for ar data lstm')
-parser.add_argument('-lstm_meta_hl', '--lstm_meta_hid_lyr', default=2, type=int,
-                    metavar='LMHL', help='total number of meta lstm layers')
-parser.add_argument('-lstm_ar_hl', '--lstm_ar_hid_lyr', default=2, type=int,
-                    metavar='LAHL', help='total number of ar lstm layers')
-parser.add_argument('-lstm_dr', '--lstm_dropout', default=0, type=float,
-                    metavar='LD', help='lstm dropout between layers')
-# mlp params
-parser.add_argument('-mlp_hl', '--mlp_hid_lyr', default=512, type=int,
-                    metavar='MHL', help='final mlp layers')
 # series type '15_mins' or '1_hour' or '1_day'
 parser.add_argument('--series_type', '-st', default='15_mins', type=str,
                     metavar='ST', help='on which type of time series to train the model')
-parser.add_argument('--use_output', '-useout', default='last', type=str,
-                    metavar='ST', help='which value of the model to use')
 parser.add_argument('-val_size', '--val_size', default=0.25, type=float,
                     metavar='VS', help='validation set size')
 
@@ -206,18 +190,10 @@ def main():
         predictors = temp_features + additional_numeric_features + hol_emb_features + time_emb_features + additional_embeddings
         
         # E2EGRU or E2ELSTM
-        model = EncoderDecoderGRUSK(in_sequence_len = args.inp_seq,
-                         out_sequence_len = args.out_seq,
-                         features_meta_total = args.features_meta,
-                         features_ar_total = args.features_ar,
-                         meta_hidden_layer_length = args.lstm_meta_hid_feat,
-                         ar_hidden_layer_length = args.lstm_ar_hid_feat,
-                         meta_hidden_layers = args.lstm_meta_hid_lyr,
-                         ar_hidden_layers = args.lstm_ar_hid_lyr,
-                         lstm_dropout = args.lstm_dropout,
-                         classifier_hidden_length = args.mlp_hid_lyr,
-                         use_output = args.use_output,
-                         use_bi = True)
+        model = DilatedConvModel(in_sequence_len = args.inp_seq,
+                                 out_sequence_len = args.out_seq,
+                                 features_meta_total = args.features_meta,
+                                 features_ar_total = args.features_ar)
 
     # model.cuda()
     model = torch.nn.DataParallel(model).cuda()
