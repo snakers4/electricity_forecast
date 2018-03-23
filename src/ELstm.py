@@ -631,3 +631,261 @@ class EncoderDecoderGRU(nn.Module):
         out = self.classifier(out)
 
         return out   
+    
+class EncoderDecoderGRUNoAr(nn.Module):
+    def __init__(self,
+                 in_sequence_len = 700,
+                 out_sequence_len = 192,
+                 features_meta_total = 72,
+                 features_ar_total = 1,
+                 meta_hidden_layer_length = 192,
+                 ar_hidden_layer_length = 192,
+                 meta_hidden_layers = 3,
+                 ar_hidden_layers = 3,
+                 lstm_dropout = 0.5,
+                 classifier_hidden_length = 192 * 2,
+                 use_output = 'last',
+                 ):
+        
+        super(EncoderDecoderGRUNoAr, self).__init__()
+
+        self.meta_hidden_layer_length = meta_hidden_layer_length
+        self.ar_hidden_layer_length = ar_hidden_layer_length
+        self.meta_hidden_layers = meta_hidden_layers
+        self.ar_hidden_layers = ar_hidden_layers      
+        self.use_output = use_output
+                 
+        # create an embedding for each categorical feature
+        self.hol_emb, emb_size, output_size = create_emb(cat_size = 66,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)
+        self.year_emb, emb_size, output_size = create_emb(cat_size = 8,
+                                                       max_emb_size = 50,
+                                                       output_size = 100) 
+        self.month_emb, emb_size, output_size = create_emb(cat_size = 12,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)  
+        self.day_emb, emb_size, output_size = create_emb(cat_size = 31,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)  
+        self.hour_emb, emb_size, output_size = create_emb(cat_size = 24,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)
+        self.min_emb, emb_size, output_size = create_emb(cat_size = 60,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)
+        self.dow_emb, emb_size, output_size = create_emb(cat_size = 7,
+                                                       max_emb_size = 50,
+                                                       output_size = 100)        
+   
+        self.encoder_gru_meta = nn.GRU(features_meta_total,
+                            meta_hidden_layer_length,
+                            meta_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+        
+        self.decoder_gru_meta = nn.GRU(meta_hidden_layer_length,
+                            meta_hidden_layer_length,
+                            meta_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(meta_hidden_layer_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, out_sequence_len),
+        )
+
+    def forward(self,
+                x_temp,
+                x_meta,
+                x_ar):
+        
+        # embed and extract various features
+        x_hol = self.hol_emb(x_meta[:,:,0])
+        x_year = self.year_emb(x_meta[:,:,1])
+        x_month = self.month_emb(x_meta[:,:,2])
+        x_day = self.day_emb(x_meta[:,:,3])
+        x_hour = self.hour_emb(x_meta[:,:,4])
+        x_min = self.min_emb(x_meta[:,:,5])
+        x_dow = self.dow_emb(x_meta[:,:,6])
+
+        x_meta = torch.cat([x_temp,x_hol,x_year,x_month,x_day,x_hour,x_min,x_dow],dim=2)
+        
+        # Encoder part of the network # 
+        # Initial values for GRUs
+        h0_meta = Variable(torch.zeros(self.meta_hidden_layers,  x_meta.size(0), self.meta_hidden_layer_length).cuda())
+        # Forward propagate GRUs
+        meta_encoded, meta_hidden = self.encoder_gru_meta(x_meta, h0_meta)
+
+        # Decoder part of the network # 
+        # Use hidden states of encoders for decode
+        meta_decoded,_ = self.decoder_gru_meta(meta_encoded, meta_hidden)
+        
+        if self.use_output  == 'last':
+            meta_decoded = meta_decoded[:, -1, :]
+        elif self.use_output  == 'first': 
+            meta_decoded = meta_decoded[:, 0, :]
+
+        out = self.classifier(meta_decoded)
+
+        return out       
+    
+class EncoderDecoderGRUSK(nn.Module):
+    def __init__(self,
+                 in_sequence_len = 700,
+                 out_sequence_len = 192,
+                 features_meta_total = 72,
+                 features_ar_total = 1,
+                 meta_hidden_layer_length = 192,
+                 ar_hidden_layer_length = 192,
+                 meta_hidden_layers = 3,
+                 ar_hidden_layers = 3,
+                 lstm_dropout = 0.5,
+                 classifier_hidden_length = 192 * 2,
+                 use_output = 'last',
+                 ):
+        
+        super(EncoderDecoderGRUSK, self).__init__()
+
+        self.meta_hidden_layer_length = meta_hidden_layer_length
+        self.ar_hidden_layer_length = ar_hidden_layer_length
+        self.meta_hidden_layers = meta_hidden_layers
+        self.ar_hidden_layers = ar_hidden_layers      
+        self.use_output = use_output
+                 
+        # create an embedding for each categorical feature
+        self.hol_emb, _, _ = create_emb(cat_size = 66,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.year_emb, _, _ = create_emb(cat_size = 8,
+                                       max_emb_size = 50,
+                                       output_size = 100) 
+        self.month_emb, _, _ = create_emb(cat_size = 12,
+                                       max_emb_size = 50,
+                                       output_size = 100)  
+        self.day_emb, _, _ = create_emb(cat_size = 31,
+                                       max_emb_size = 50,
+                                       output_size = 100)  
+        self.hour_emb, _, _ = create_emb(cat_size = 24,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.min_emb, _, _ = create_emb(cat_size = 60,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        self.dow_emb, _, _ = create_emb(cat_size = 7,
+                                       max_emb_size = 50,
+                                       output_size = 100)
+        
+        # additional binary and categorical embeddings
+        self.has_weather_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)        
+        self.is_hol_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.is_weekend_emb, _, _ = create_emb(cat_size = 2,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.series_type_emb, _, _ = create_emb(cat_size = 3,
+                                           max_emb_size = 50,
+                                           output_size = 10)
+        self.site_id_emb, _, _ = create_emb(cat_size = 267,
+                                           max_emb_size = 50,
+                                           output_size = 300)        
+   
+        self.encoder_gru_meta = nn.GRU(features_meta_total,
+                            meta_hidden_layer_length,
+                            meta_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+
+        self.encoder_gru_ar = nn.GRU(features_ar_total,
+                            ar_hidden_layer_length,
+                            ar_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+        
+        self.decoder_gru_meta = nn.GRU(meta_hidden_layer_length,
+                            meta_hidden_layer_length,
+                            meta_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)
+
+        self.decoder_gru_ar = nn.GRU(ar_hidden_layer_length,
+                            ar_hidden_layer_length,
+                            ar_hidden_layers,
+                            batch_first=True,
+                            dropout=lstm_dropout,
+                            bidirectional=False)          
+
+        self.classifier = nn.Sequential(
+            nn.Linear(meta_hidden_layer_length + ar_hidden_layer_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, classifier_hidden_length),
+            nn.BatchNorm2d(classifier_hidden_length),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(classifier_hidden_length, out_sequence_len),
+        )
+
+    def forward(self,
+                x_temp,
+                x_meta,
+                x_ar):
+        
+        # embed and extract various features
+        x_hol = self.hol_emb(x_meta[:,:,0])
+        x_year = self.year_emb(x_meta[:,:,1])
+        x_month = self.month_emb(x_meta[:,:,2])
+        x_day = self.day_emb(x_meta[:,:,3])
+        x_hour = self.hour_emb(x_meta[:,:,4])
+        x_min = self.min_emb(x_meta[:,:,5])
+        x_dow = self.dow_emb(x_meta[:,:,6])
+
+        x_has_weather = self.has_weather_emb(x_meta[:,:,7])
+        x_is_hol = self.is_hol_emb(x_meta[:,:,8])
+        x_is_weekend = self.is_weekend_emb(x_meta[:,:,9])
+        x_series_type = self.series_type_emb(x_meta[:,:,10])        
+        x_site_id = self.site_id_emb(x_meta[:,:,11])           
+        
+        x_meta = torch.cat([x_temp,x_hol,x_year,x_month,x_day,x_hour,x_min,x_dow,\
+                            x_has_weather,x_is_hol,x_is_weekend,x_series_type,x_site_id],dim=2)
+        
+        # Encoder part of the network # 
+        # Initial values for GRUs
+        h0_meta = Variable(torch.zeros(self.meta_hidden_layers,  x_meta.size(0), self.meta_hidden_layer_length).cuda())
+        h0_ar = Variable(torch.zeros(self.ar_hidden_layers, x_ar.size(0), self.ar_hidden_layer_length).cuda()) 
+        # Forward propagate GRUs
+        meta_encoded, meta_hidden = self.encoder_gru_meta(x_meta, h0_meta)
+        ar_encoded, ar_hidden = self.encoder_gru_ar(x_ar, h0_ar)
+
+        # Decoder part of the network # 
+        # Use hidden states of encoders for decode
+        meta_decoded,_ = self.decoder_gru_meta(meta_encoded, meta_hidden)
+        ar_decoded,_ = self.decoder_gru_ar(ar_encoded, ar_hidden)          
+        
+        if self.use_output  == 'last':
+            meta_decoded = meta_decoded[:, -1, :]
+            ar_decoded = ar_decoded[:, -1, :]
+        elif self.use_output  == 'first': 
+            meta_decoded = meta_decoded[:, 0, :]
+            ar_decoded = ar_decoded[:, 0, :]                 
+
+        out = torch.cat([meta_decoded,ar_decoded],dim=1)
+        out = self.classifier(out)
+
+        return out      

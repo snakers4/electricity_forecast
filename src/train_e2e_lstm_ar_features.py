@@ -29,7 +29,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau,MultiStepLR
 
 # custom classes
 from SDataset import S2SDataset
-from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day,E2EGRU,EncoderDecoderGRU
+from ELstm import E2ELSTM,WMSELoss,E2ELSTM_day,E2EGRU,EncoderDecoderGRU,EncoderDecoderGRUNoAr
 
 
 import pandas as pd
@@ -186,7 +186,7 @@ def main():
         predictors = temp_features + hol_emb_features + time_emb_features
         
         # E2EGRU or E2ELSTM
-        model = EncoderDecoderGRU(in_sequence_len = args.inp_seq,
+        model = EncoderDecoderGRUNoAr(in_sequence_len = args.inp_seq,
                          out_sequence_len = args.out_seq,
                          features_meta_total = args.features_meta,
                          features_ar_total = args.features_ar,
